@@ -18,6 +18,7 @@ provider "azurerm" {
   features {}
 }
 
+
 resource "random_string" "suffix" {
   length  = 6
   upper   = false
@@ -26,6 +27,7 @@ resource "random_string" "suffix" {
 
 locals {
   prefix = "${var.project}-${var.environment}-${random_string.suffix.result}"
+  name = "" # 各自の名前を入れる
 
   tags = {
     project     = var.project
@@ -35,7 +37,7 @@ locals {
 }
 
 resource "azurerm_resource_group" "main" {
-  name     = "rg-${local.prefix}"
+  name     = "${local.name}-rg-${local.prefix}"
   location = var.location
   tags     = local.tags
 }
@@ -45,10 +47,10 @@ resource "azurerm_resource_group" "main" {
 # -------------------------
 
 resource "azurerm_virtual_network" "main" {
-  name                = "vnet-${local.prefix}"
+  name                = "${local.name}-vnet-${local.prefix}"
   location            = azurerm_resource_group.main.location
   resource_group_name = azurerm_resource_group.main.name
-  address_space       = ["10.10.0.0/16"]
+  address_space       = ["10.0.0.0/16"]
   tags                = local.tags
 }
 

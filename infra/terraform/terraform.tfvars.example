@@ -1,0 +1,12 @@
+# Copy to terraform.tfvars and fill in values.
+# cp terraform.tfvars.example terraform.tfvars
+
+admin_ssh_public_key = "ssh-rsa AAAA... your-key@example.com"
+
+# Optional: restrict to corporate egress IP
+# allowed_source_address_prefix = "203.0.113.0/24"
+
+participant_count = 10
+base_port         = 8001
+vm_size           = "Standard_D4s_v5"
+location          = "japaneast"
