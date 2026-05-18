@@ -3,8 +3,13 @@
 
 admin_ssh_public_key = "ssh-rsa AAAA... your-key@example.com"
 
-# Optional: restrict to corporate egress IP
-# allowed_source_address_prefix = "203.0.113.0/24"
+# Optional: restrict inbound by source IP (NSG)
+# 参加者（code-server ポート）— 社内グローバル NAT など
+# participant_allowed_source_address_prefixes = ["203.0.113.0/24"]
+# 主催者（SSH）— 自宅やオフィス固定 IP など（参加者より狭くしてもよい）
+# organizer_allowed_source_address_prefixes = ["203.0.113.10/32"]
+# 複数 CIDR の例:
+# participant_allowed_source_address_prefixes = ["203.0.113.0/24", "198.51.100.0/24"]
 
 participant_count = 10
 base_port         = 8001

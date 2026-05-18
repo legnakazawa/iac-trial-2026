@@ -44,10 +44,26 @@ variable "admin_ssh_public_key" {
   description = "SSH public key for organizer access to the VM."
 }
 
-variable "allowed_source_address_prefix" {
-  type        = string
-  description = "CIDR or * for NSG inbound rule on code-server ports. Restrict to corporate egress IP when possible."
-  default     = "*"
+variable "participant_allowed_source_address_prefixes" {
+  type        = list(string)
+  description = "Inbound source CIDRs allowed for code-server ports (participant browser access). Example: [\"203.0.113.0/24\", \"198.51.100.50/32\"]. Use [\"*\"] to allow all."
+  default     = ["*"]
+
+  validation {
+    condition     = length(var.participant_allowed_source_address_prefixes) > 0
+    error_message = "participant_allowed_source_address_prefixes must contain at least one CIDR or \"*\"."
+  }
+}
+
+variable "organizer_allowed_source_address_prefixes" {
+  type        = list(string)
+  description = "Inbound source CIDRs allowed for SSH port 22 (organizer maintenance). Example: [\"203.0.113.10/32\"]. Use [\"*\"] to allow all."
+  default     = ["*"]
+
+  validation {
+    condition     = length(var.organizer_allowed_source_address_prefixes) > 0
+    error_message = "organizer_allowed_source_address_prefixes must contain at least one CIDR or \"*\"."
+  }
 }
 
 variable "vm_disk_size_gb" {

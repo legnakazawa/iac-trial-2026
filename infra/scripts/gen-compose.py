@@ -28,7 +28,8 @@ def random_password(length: int = 16) -> str:
 
 def load_terraform_outputs() -> dict:
     result = subprocess.run(
-        ["terraform", "-chdir", str(TERRAFORM_DIR), "output", "-json"],
+        ["terraform", "output", "-json"],
+        cwd=str(TERRAFORM_DIR),
         capture_output=True,
         text=True,
         check=False,

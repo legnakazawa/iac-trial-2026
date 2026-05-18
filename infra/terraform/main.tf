@@ -62,27 +62,27 @@ resource "azurerm_network_security_group" "vm" {
   tags                = local.tags
 
   security_rule {
-    name                       = "AllowSSHOrganizer"
-    priority                   = 100
-    direction                  = "Inbound"
-    access                     = "Allow"
-    protocol                   = "Tcp"
-    source_port_range          = "*"
-    destination_port_range     = "22"
-    source_address_prefix      = var.allowed_source_address_prefix
-    destination_address_prefix = "*"
+    name                         = "AllowSSHOrganizer"
+    priority                     = 100
+    direction                    = "Inbound"
+    access                       = "Allow"
+    protocol                     = "Tcp"
+    source_port_range            = "*"
+    destination_port_range       = "22"
+    source_address_prefixes      = var.organizer_allowed_source_address_prefixes
+    destination_address_prefix   = "*"
   }
 
   security_rule {
-    name                       = "AllowCodeServer"
-    priority                   = 110
-    direction                  = "Inbound"
-    access                     = "Allow"
-    protocol                   = "Tcp"
-    source_port_range          = "*"
-    destination_port_range     = "${var.base_port}-${var.base_port + var.participant_count - 1}"
-    source_address_prefix      = var.allowed_source_address_prefix
-    destination_address_prefix = "*"
+    name                         = "AllowCodeServer"
+    priority                     = 110
+    direction                    = "Inbound"
+    access                       = "Allow"
+    protocol                     = "Tcp"
+    source_port_range            = "*"
+    destination_port_range       = "${var.base_port}-${var.base_port + var.participant_count - 1}"
+    source_address_prefixes      = var.participant_allowed_source_address_prefixes
+    destination_address_prefix   = "*"
   }
 }
 

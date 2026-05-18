@@ -60,8 +60,34 @@ cp terraform.tfvars.example terraform.tfvars
 | `admin_ssh_public_key` | 主催者の SSH 公開鍵（必須） |
 | `participant_count` | 参加者数（= code-server コンテナ数） |
 | `base_port` | 先頭ポート（デフォルト 8001 → 8001, 8002, …） |
-| `allowed_source_address_prefix` | NSG の許可元（社内 IP に絞る場合は CIDR 指定） |
+| `participant_allowed_source_address_prefixes` | 参加者（code-server）の接続元 CIDR リスト |
+| `organizer_allowed_source_address_prefixes` | 主催者（SSH）の接続元 CIDR リスト |
 | `vm_size` | VM サイズ（10 人程度なら `Standard_D4s_v5` 推奨） |
+
+#### 接続元 IP 制限（NSG）
+
+VM の NSG に、変数で指定した CIDR からの Inbound のみを許可します。未指定時は `["*"]`（全世界）です。
+
+```hcl
+# 参加者: 社内オフィスのグローバル IP レンジのみ
+participant_allowed_source_address_prefixes = ["203.0.113.0/24"]
+
+# 主催者: 自宅の固定 IP のみ SSH 可（参加者より狭くする例）
+organizer_allowed_source_address_prefixes = ["198.51.100.50/32"]
+
+# 拠点が複数ある場合
+participant_allowed_source_address_prefixes = [
+  "203.0.113.0/24",
+  "198.51.100.0/24",
+]
+```
+
+| 変数 | 対象ポート | 用途 |
+|------|-----------|------|
+| `participant_allowed_source_address_prefixes` | `base_port` 〜（code-server） | 参加者のブラウザアクセス |
+| `organizer_allowed_source_address_prefixes` | 22（SSH） | `deploy-to-vm.sh` など主催者操作 |
+
+変更後は `terraform apply` で NSG が更新されます。
 
 ### 1.3 社内ネットワークの事前確認（推奨）
 
@@ -208,7 +234,7 @@ terraform destroy
 
 | 症状 | 対処 |
 |------|------|
-| ブラウザで接続できない | NSG の `allowed_source_address_prefix`、社内プロキシ、ポート開放を確認 |
+| ブラウザで接続できない | NSG の `participant_allowed_source_address_prefixes`、社内プロキシ、ポート開放を確認 |
 | `terraform output` が失敗 | `infra/terraform` で `terraform apply` が完了しているか確認 |
 | `deploy-to-vm.sh` が SSH 失敗 | cloud-init 完了待ち、`admin_ssh_public_key` の一致を確認 |
 | 参加者の `terraform apply` が認証エラー | VM 上で `docker compose` 再起動、`.env` の ARM_* を確認 |
