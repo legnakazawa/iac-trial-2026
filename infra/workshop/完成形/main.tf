@@ -11,6 +11,10 @@ terraform {
       source  = "hashicorp/random"
       version = "~> 3.7"
     }
+    archive = {
+      source  = "hashicorp/archive"
+      version = "~> 2.4"
+    }
   }
 }
 
@@ -18,28 +22,28 @@ provider "azurerm" {
   features {}
 }
 
+data "azurerm_resource_group" "workshop" {
+  name = var.resource_group_name
+}
 
 resource "random_string" "suffix" {
-  length  = 6
+  length  = 8
   upper   = false
   special = false
 }
 
 locals {
-  prefix = "${var.project}-${var.environment}-${random_string.suffix.result}"
-  name = "" # 各自の名前を入れる
+  prefix = "${var.owner}-${var.project}-${var.environment}-${random_string.suffix.result}"
+
+  # Storage account: 3-24 chars, lowercase alphanumeric only
+  storage_account_name = "st${var.owner}${random_string.suffix.result}"
 
   tags = {
-    project     = var.project
-    environment = var.environment
-    owner       = var.owner
+    project      = var.project
+    environment  = var.environment
+    owner        = var.owner
+    display_name = var.display_name
   }
-}
-
-resource "azurerm_resource_group" "main" {
-  name     = "${local.name}-rg-${local.prefix}"
-  location = var.location
-  tags     = local.tags
 }
 
 # -------------------------
@@ -47,18 +51,18 @@ resource "azurerm_resource_group" "main" {
 # -------------------------
 
 resource "azurerm_virtual_network" "main" {
-  name                = "${local.name}-vnet-${local.prefix}"
-  location            = azurerm_resource_group.main.location
-  resource_group_name = azurerm_resource_group.main.name
+  name                = "vnet-${local.prefix}"
+  location            = data.azurerm_resource_group.workshop.location
+  resource_group_name = data.azurerm_resource_group.workshop.name
   address_space       = ["10.0.0.0/16"]
   tags                = local.tags
 }
 
 resource "azurerm_subnet" "app_integration" {
   name                 = "snet-app-integration"
-  resource_group_name  = azurerm_resource_group.main.name
+  resource_group_name  = data.azurerm_resource_group.workshop.name
   virtual_network_name = azurerm_virtual_network.main.name
-  address_prefixes     = ["10.10.1.0/24"]
+  address_prefixes     = ["10.0.1.0/24"]
 
   delegation {
     name = "delegation-app-service"
@@ -72,9 +76,9 @@ resource "azurerm_subnet" "app_integration" {
 
 resource "azurerm_subnet" "private_endpoint" {
   name                 = "snet-private-endpoint"
-  resource_group_name  = azurerm_resource_group.main.name
+  resource_group_name  = data.azurerm_resource_group.workshop.name
   virtual_network_name = azurerm_virtual_network.main.name
-  address_prefixes     = ["10.10.2.0/24"]
+  address_prefixes     = ["10.0.2.0/24"]
 }
 
 # -------------------------
@@ -82,9 +86,9 @@ resource "azurerm_subnet" "private_endpoint" {
 # -------------------------
 
 resource "azurerm_storage_account" "main" {
-  name                            = "st${replace(local.prefix, "-", "")}"
-  resource_group_name             = azurerm_resource_group.main.name
-  location                        = azurerm_resource_group.main.location
+  name                            = local.storage_account_name
+  resource_group_name             = data.azurerm_resource_group.workshop.name
+  location                        = data.azurerm_resource_group.workshop.location
   account_tier                    = "Standard"
   account_replication_type        = "LRS"
   allow_nested_items_to_be_public = false
@@ -100,19 +104,18 @@ resource "azurerm_storage_container" "main" {
 }
 
 # -------------------------
-# Private DNS Zone for Blob
+# Private DNS Zone for Blob (shared in workshop RG; created by organizer terraform)
 # -------------------------
 
-resource "azurerm_private_dns_zone" "blob" {
+data "azurerm_private_dns_zone" "blob" {
   name                = "privatelink.blob.core.windows.net"
-  resource_group_name = azurerm_resource_group.main.name
-  tags                = local.tags
+  resource_group_name = data.azurerm_resource_group.workshop.name
 }
 
 resource "azurerm_private_dns_zone_virtual_network_link" "blob" {
   name                  = "pdnslink-blob-${local.prefix}"
-  resource_group_name   = azurerm_resource_group.main.name
-  private_dns_zone_name = azurerm_private_dns_zone.blob.name
+  resource_group_name   = data.azurerm_resource_group.workshop.name
+  private_dns_zone_name = data.azurerm_private_dns_zone.blob.name
   virtual_network_id    = azurerm_virtual_network.main.id
   registration_enabled  = false
   tags                  = local.tags
@@ -120,8 +123,8 @@ resource "azurerm_private_dns_zone_virtual_network_link" "blob" {
 
 resource "azurerm_private_endpoint" "storage_blob" {
   name                = "pe-st-blob-${local.prefix}"
-  location            = azurerm_resource_group.main.location
-  resource_group_name = azurerm_resource_group.main.name
+  location            = data.azurerm_resource_group.workshop.location
+  resource_group_name = data.azurerm_resource_group.workshop.name
   subnet_id           = azurerm_subnet.private_endpoint.id
   tags                = local.tags
 
@@ -134,7 +137,7 @@ resource "azurerm_private_endpoint" "storage_blob" {
 
   private_dns_zone_group {
     name                 = "default"
-    private_dns_zone_ids = [azurerm_private_dns_zone.blob.id]
+    private_dns_zone_ids = [data.azurerm_private_dns_zone.blob.id]
   }
 }
 
@@ -144,8 +147,8 @@ resource "azurerm_private_endpoint" "storage_blob" {
 
 resource "azurerm_application_insights" "main" {
   name                = "appi-${local.prefix}"
-  location            = azurerm_resource_group.main.location
-  resource_group_name = azurerm_resource_group.main.name
+  location            = data.azurerm_resource_group.workshop.location
+  resource_group_name = data.azurerm_resource_group.workshop.name
   application_type    = "web"
   tags                = local.tags
 }
@@ -154,10 +157,16 @@ resource "azurerm_application_insights" "main" {
 # App Service
 # -------------------------
 
+data "archive_file" "app" {
+  type        = "zip"
+  source_dir  = "${path.module}/app"
+  output_path = "${path.module}/app.zip"
+}
+
 resource "azurerm_service_plan" "main" {
   name                = "asp-${local.prefix}"
-  location            = azurerm_resource_group.main.location
-  resource_group_name = azurerm_resource_group.main.name
+  location            = data.azurerm_resource_group.workshop.location
+  resource_group_name = data.azurerm_resource_group.workshop.name
 
   os_type  = "Linux"
   sku_name = "B1"
@@ -166,26 +175,28 @@ resource "azurerm_service_plan" "main" {
 }
 
 resource "azurerm_linux_web_app" "main" {
-  name                = "app-${local.prefix}"
-  location            = azurerm_resource_group.main.location
-  resource_group_name = azurerm_resource_group.main.name
+  name                = "app-${replace(local.prefix, "-", "")}"
+  location            = data.azurerm_resource_group.workshop.location
+  resource_group_name = data.azurerm_resource_group.workshop.name
   service_plan_id     = azurerm_service_plan.main.id
 
-  https_only = true
+  https_only      = true
+  zip_deploy_file = data.archive_file.app.output_path
 
   site_config {
+    vnet_route_all_enabled = true
+
     application_stack {
       node_version = "20-lts"
     }
   }
 
   app_settings = {
-    "WEBSITE_RUN_FROM_PACKAGE"              = "1"
-    "WEBSITE_VNET_ROUTE_ALL"               = "1"
     "APPINSIGHTS_INSTRUMENTATIONKEY"        = azurerm_application_insights.main.instrumentation_key
     "APPLICATIONINSIGHTS_CONNECTION_STRING" = azurerm_application_insights.main.connection_string
     "STORAGE_ACCOUNT_NAME"                  = azurerm_storage_account.main.name
     "STORAGE_BLOB_ENDPOINT"                 = azurerm_storage_account.main.primary_blob_endpoint
+    "OWNER"                                 = var.owner
   }
 
   tags = local.tags

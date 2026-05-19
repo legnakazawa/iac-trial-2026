@@ -17,7 +17,7 @@
 infra/
 ├── terraform/          # VM・ネットワーク・Service Principal
 ├── docker/             # code-server 用 Dockerfile
-├── workshop/           # 参加者が編集する Terraform（テンプレート）
+├── workshop/           # 難易度別 Terraform（初級 / 中級 / 上級 / 完成形）
 ├── scripts/            # 生成・デプロイ・配布用スクリプト
 ├── credentials/        # 参加者 CSV（git 管理外）
 ├── README-organizer.md # 本ファイル
@@ -112,7 +112,10 @@ terraform apply
 | Public IP | 参加者がブラウザでアクセス |
 | NSG | SSH(22) + code-server ポート範囲 |
 | Service Principal | 参加者 Terraform 用（`az login` 不要） |
-| `rg-workshop-*` | 参加者が `terraform apply` する先の RG |
+| `rg-workshop-*` | 参加者が `terraform apply` する先の RG（全員共有） |
+| `privatelink.blob.core.windows.net` | 上記 RG 内の共有 Private DNS ゾーン（参加者は data 参照のみ） |
+
+参加者用 Terraform（`infra/workshop/`）は **新規 RG を作らず**、共有 RG に `owner`（`user01` など）入りの名前でリソースを作成します。`gen-compose.py` が `TF_VAR_owner` と `TF_VAR_resource_group_name` を各席に注入します。
 
 apply 完了後、以下で接続先 IP を確認できます。
 
@@ -204,12 +207,23 @@ sudo docker compose logs -f user01
 
 ### ワークショップ用 Terraform の更新
 
-`infra/workshop/` を更新した場合:
+配布する難易度フォルダ（例: `infra/workshop/初級`）を更新した場合:
+
+1. `infra/scripts/gen-compose.py` の `WORKSHOP_SRC` がそのフォルダを指していることを確認
+2. 以下を実行
 
 ```bash
 python3 scripts/gen-compose.py   # workspaces を再同期
 ./scripts/deploy-to-vm.sh
 ```
+
+> テンプレート更新後に **既に apply 済みの参加者** がいる場合、state と Azure 上のリソース名がずれることがあります。本番ハンズオン前に反映するか、全席 `terraform destroy` 後に workspace を再生成してください。
+
+完成形（答え合わせ）は `infra/workshop/完成形/` にあります。参加者 workspace にはコピーされません。
+
+### 主催者 terraform を再 apply する場合
+
+共有 Private DNS ゾーンは `infra/terraform/workshop_shared.tf` で管理しています。初回 apply 後、参加者に難易度別テンプレート（`workshop/初級` など）を配布する前に、必ず主催者側の `terraform apply` が完了していることを確認してください。
 
 ---
 

@@ -46,23 +46,39 @@ variable "admin_ssh_public_key" {
 
 variable "participant_allowed_source_address_prefixes" {
   type        = list(string)
-  description = "Inbound source CIDRs allowed for code-server ports (participant browser access). Example: [\"203.0.113.0/24\", \"198.51.100.50/32\"]. Use [\"*\"] to allow all."
+  description = "Inbound source CIDRs allowed for code-server ports (participant browser access). Example: [\"203.0.113.0/24\", \"198.51.100.50/32\"]. Use [\"*\"] alone to allow all (mapped to source_address_prefix, not prefixes)."
   default     = ["*"]
 
   validation {
     condition     = length(var.participant_allowed_source_address_prefixes) > 0
     error_message = "participant_allowed_source_address_prefixes must contain at least one CIDR or \"*\"."
   }
+
+  validation {
+    condition = !contains(var.participant_allowed_source_address_prefixes, "*") || (
+      length(var.participant_allowed_source_address_prefixes) == 1
+      && var.participant_allowed_source_address_prefixes[0] == "*"
+    )
+    error_message = "participant_allowed_source_address_prefixes: \"*\" must be the only entry."
+  }
 }
 
 variable "organizer_allowed_source_address_prefixes" {
   type        = list(string)
-  description = "Inbound source CIDRs allowed for SSH port 22 (organizer maintenance). Example: [\"203.0.113.10/32\"]. Use [\"*\"] to allow all."
+  description = "Inbound source CIDRs allowed for SSH port 22 (organizer maintenance). Example: [\"203.0.113.10/32\"]. Use [\"*\"] alone to allow all (mapped to source_address_prefix, not prefixes)."
   default     = ["*"]
 
   validation {
     condition     = length(var.organizer_allowed_source_address_prefixes) > 0
     error_message = "organizer_allowed_source_address_prefixes must contain at least one CIDR or \"*\"."
+  }
+
+  validation {
+    condition = !contains(var.organizer_allowed_source_address_prefixes, "*") || (
+      length(var.organizer_allowed_source_address_prefixes) == 1
+      && var.organizer_allowed_source_address_prefixes[0] == "*"
+    )
+    error_message = "organizer_allowed_source_address_prefixes: \"*\" must be the only entry."
   }
 }
 

@@ -8,6 +8,11 @@ output "workshop_resource_group_name" {
   value       = azurerm_resource_group.workshop.name
 }
 
+output "workshop_private_dns_zone_blob_id" {
+  description = "Shared privatelink.blob.core.windows.net zone ID in the workshop RG."
+  value       = azurerm_private_dns_zone.workshop_blob.id
+}
+
 output "vm_public_ip" {
   description = "Public IP address of the workshop VM."
   value       = azurerm_public_ip.vm.ip_address
