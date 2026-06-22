@@ -13,6 +13,7 @@ cd "${TERRAFORM_DIR}"
 
 GIT_PAT="$(terraform output -raw azuredevops_git_pat)"
 REPOS_JSON="$(terraform output -json participant_repositories)"
+AUTH_HEADER="$(printf ':%s' "${GIT_PAT}" | base64 | tr -d '\r\n')"
 
 python3 - "$REPOS_JSON" <<'PY' > "${TMP_ROOT}/repos.tsv"
 import json
@@ -37,16 +38,14 @@ while IFS=$'\t' read -r owner repo_url; do
     tar -xf -
   )
 
-  auth_repo_url="${repo_url/https:\/\//https:\/\/user:${GIT_PAT}@}"
-
   git -C "${workdir}" init
   git -C "${workdir}" config user.name "iac-workshop-organizer"
   git -C "${workdir}" config user.email "iac-workshop-organizer@example.local"
   git -C "${workdir}" add .
   git -C "${workdir}" commit -m "Initial workshop template"
   git -C "${workdir}" branch -M main
-  git -C "${workdir}" remote add origin "${auth_repo_url}"
-  git -C "${workdir}" push -f origin main
+  git -C "${workdir}" remote add origin "${repo_url}"
+  git -C "${workdir}" -c "http.extraHeader=AUTHORIZATION: Basic ${AUTH_HEADER}" push -f origin main
 done < "${TMP_ROOT}/repos.tsv"
 
 echo "Repository bootstrap complete."

@@ -39,3 +39,19 @@ python3 scripts/gen-compose.py
 ./scripts/deploy-to-vm.sh
 ./scripts/print-handout.sh
 ```
+
+PowerShell の場合:
+
+```powershell
+Set-Location 第三回/infra/terraform
+Copy-Item terraform.tfvars.example terraform.tfvars
+# terraform.tfvars を編集
+terraform init
+terraform apply
+
+Set-Location ..
+./scripts/bootstrap-repos.ps1
+python scripts/gen-compose.py
+./scripts/deploy-to-vm.ps1
+./scripts/print-handout.ps1
+```

@@ -11,6 +11,7 @@ import string
 import subprocess
 import sys
 from pathlib import Path
+from urllib.parse import urlsplit, urlunsplit
 
 INFRA_ROOT = Path(__file__).resolve().parent.parent
 DOCKER_DIR = INFRA_ROOT / "docker"
@@ -23,6 +24,15 @@ TERRAFORM_DIR = INFRA_ROOT / "terraform"
 def random_password(length: int = 16) -> str:
     alphabet = string.ascii_letters + string.digits
     return "".join(secrets.choice(alphabet) for _ in range(length))
+
+
+def sanitize_repo_url(url: str) -> str:
+    parsed = urlsplit(url)
+    hostname = parsed.hostname or ""
+    netloc = hostname
+    if parsed.port:
+        netloc = f"{hostname}:{parsed.port}"
+    return urlunsplit((parsed.scheme, netloc, parsed.path, parsed.query, parsed.fragment))
 
 
 def terraform_output_json(name: str | None = None) -> dict:
@@ -83,7 +93,7 @@ def write_compose(
     services: list[str] = []
     for index, owner in enumerate(sorted(repos), start=0):
         port = base_port + index
-        repo_url = repos[owner]["remote_url"]
+        repo_url = sanitize_repo_url(repos[owner]["remote_url"])
         services.append(
             f"""  {owner}:
     build: .
@@ -126,13 +136,14 @@ def write_participants_csv(
         )
         writer.writeheader()
         for index, owner in enumerate(sorted(repos), start=0):
+            repo_url = sanitize_repo_url(repos[owner]["remote_url"])
             writer.writerow(
                 {
                     "seat": str(index + 1),
                     "owner": owner,
                     "url": f"http://{vm_ip}:{base_port + index}",
                     "password": passwords[owner],
-                    "repo_url": repos[owner]["remote_url"],
+                    "repo_url": repo_url,
                 }
             )
 

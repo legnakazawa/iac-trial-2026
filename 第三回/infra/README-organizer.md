@@ -59,6 +59,10 @@ participant_count = 10
 base_port         = 8001
 ```
 
+この構成では、Terraform state backend 用の Blob container も参加者ごとに分離されます。`participant_count = 10` の場合、`tfstate-user01` から `tfstate-user10` まで 10 個の container が作成され、各 Pipeline は自分に対応する container の `terraform.tfstate` だけを利用します。
+
+すでに単一 container 構成で参加者側の state を作成済みの場合、新しい container へは自動移行されません。切り替え前に既存 blob を対応する container へ移すか、参加者 Pipeline 初回実行前の段階でこの変更を適用してください。
+
 社内ネットワークに合わせて、必要に応じて接続元 CIDR を絞ります。
 
 ```hcl
@@ -80,6 +84,7 @@ terraform apply
 terraform output vm_public_ip
 terraform output azuredevops_project_url
 terraform output -json participant_repositories
+terraform output -json tfstate_container_names
 ```
 
 ## 4. 各 repo に workshop テンプレートを初期 push
@@ -88,6 +93,13 @@ terraform output -json participant_repositories
 cd ../
 chmod +x scripts/*.sh
 ./scripts/bootstrap-repos.sh
+```
+
+PowerShell:
+
+```powershell
+Set-Location ..
+./scripts/bootstrap-repos.ps1
 ```
 
 このスクリプトは [workshop/](./workshop/) の内容を、各参加者専用 repo の `main` に push します。`main` への push により、各 repo の Pipeline 初回実行も発火します。
@@ -99,6 +111,14 @@ chmod +x scripts/*.sh
 ```bash
 python3 scripts/gen-compose.py
 SSH_KEY=~/.ssh/id_rsa ./scripts/deploy-to-vm.sh
+```
+
+PowerShell:
+
+```powershell
+python scripts/gen-compose.py
+$env:SSH_KEY = "$HOME/.ssh/id_rsa"
+./scripts/deploy-to-vm.ps1
 ```
 
 生成物:
@@ -113,6 +133,12 @@ SSH_KEY=~/.ssh/id_rsa ./scripts/deploy-to-vm.sh
 
 ```bash
 ./scripts/print-handout.sh
+```
+
+PowerShell:
+
+```powershell
+./scripts/print-handout.ps1
 ```
 
 ## 6. 当日の説明ポイント
@@ -140,7 +166,9 @@ git push origin main
 | repo clone に失敗 | `azuredevops_git_pat` のスコープ、PAT 有効期限、repo 権限 |
 | Pipeline が起動しない | push 先が `main` か、`azure-pipelines.yml` が repo に存在するか |
 | Terraform 認証エラー | Service Connection、SP の RBAC、Pipeline 変数 |
-| backend init エラー | state Storage 名、container 名、SP の Storage Blob Data Contributor |
+| backend init エラー | state Storage 名、参加者に対応する container 名、Service Connection の認証主体に対する Blob RBAC、backend の Azure AD 認証設定 |
+
+この構成では、Managed Pool 自体ではなく Azure DevOps の Service Connection が Azure へ入る認証主体です。remote state を Blob で管理する場合は、Terraform backend を Azure AD 認証で初期化し、Service Connection の認証主体に state 用 Storage への `Storage Blob Data Contributor` を付与します。access key 方式のまま使う場合は `Microsoft.Storage/storageAccounts/listKeys/action` を含む `Storage Account Contributor` 以上が必要です。
 
 ## 8. 片付け
 

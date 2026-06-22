@@ -2,20 +2,33 @@
 set -eu
 
 WORKSHOP_DIR="/home/coder/workshop"
+REPO_URL="$(printf "%s" "${GIT_REPO_URL}" | sed 's#^https://[^/@]*@#https://#')"
+GIT_SYNC_ERROR=""
 
 /usr/local/bin/setup-git-credentials.sh
 
-AUTH_REPO_URL="$(printf "%s" "${GIT_REPO_URL}" | sed "s#^https://#https://user:${GIT_PAT}@#")"
-
 if [ ! -d "${WORKSHOP_DIR}/.git" ]; then
   rm -rf "${WORKSHOP_DIR:?}"/*
-  git clone "${AUTH_REPO_URL}" "${WORKSHOP_DIR}"
+  if ! git clone "${REPO_URL}" "${WORKSHOP_DIR}"; then
+    GIT_SYNC_ERROR="Initial clone failed for ${REPO_URL}. Check azuredevops_git_pat permissions and repository access."
+  fi
 fi
 
-git -C "${WORKSHOP_DIR}" fetch origin main || true
-git -C "${WORKSHOP_DIR}" checkout main || true
-git -C "${WORKSHOP_DIR}" pull --ff-only origin main || true
-git -C "${WORKSHOP_DIR}" remote set-url origin "${AUTH_REPO_URL}"
+if [ -d "${WORKSHOP_DIR}/.git" ]; then
+  git -C "${WORKSHOP_DIR}" fetch origin main || true
+  git -C "${WORKSHOP_DIR}" checkout main || true
+  git -C "${WORKSHOP_DIR}" pull --ff-only origin main || true
+  git -C "${WORKSHOP_DIR}" remote set-url origin "${REPO_URL}"
+fi
+
+if [ -n "${GIT_SYNC_ERROR}" ]; then
+  cat > "${WORKSHOP_DIR}/WORKSHOP-GIT-ERROR.txt" <<EOF
+${GIT_SYNC_ERROR}
+
+Configured repository:
+${REPO_URL}
+EOF
+fi
 
 cat > "${WORKSHOP_DIR}/WORKSHOP-GIT-FLOW.txt" <<'EOF'
 Third workshop Git flow:

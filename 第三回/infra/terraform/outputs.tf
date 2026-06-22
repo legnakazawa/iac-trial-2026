@@ -23,9 +23,12 @@ output "tfstate_storage_account_name" {
   value       = azurerm_storage_account.tfstate.name
 }
 
-output "tfstate_container_name" {
-  description = "Blob container for Terraform remote state."
-  value       = azurerm_storage_container.tfstate.name
+output "tfstate_container_names" {
+  description = "Blob containers for Terraform remote state by participant."
+  value = {
+    for name, container in azurerm_storage_container.tfstate :
+    name => container.name
+  }
 }
 
 output "vm_public_ip" {
@@ -58,12 +61,12 @@ output "participant_urls" {
 
 output "azuredevops_project_name" {
   description = "Azure DevOps project name."
-  value       = azuredevops_project.workshop.name
+  value       = data.azuredevops_project.workshop.name
 }
 
 output "azuredevops_project_url" {
   description = "Azure DevOps project URL."
-  value       = "${local.azuredevops_org_url}/${azuredevops_project.workshop.name}"
+  value       = "${local.azuredevops_org_url}/${data.azuredevops_project.workshop.name}"
 }
 
 output "participant_repositories" {
