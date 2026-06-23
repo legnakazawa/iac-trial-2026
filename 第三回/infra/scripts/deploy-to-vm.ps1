@@ -1,6 +1,21 @@
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
+# =============================================================
+#  設定パラメータ（このファイル内で直接定義してください）
+# -------------------------------------------------------------
+#  以前は terraform output 等のコンソール出力から取得していた値を、
+#  以下の変数として手動定義する方式に変更しています。
+# =============================================================
+
+# デプロイ先 VM の接続情報
+# 旧: terraform output -raw vm_public_ip など
+$vmIp = ''
+$vmUser = 'azureuser'
+$sshKey = '~/.ssh/id_rsa_iac_workshop'
+
+# =============================================================
+
 function ConvertTo-ProcessArgumentString {
     param(
         [string[]]$ArgumentList = @()
@@ -80,70 +95,16 @@ function Invoke-Tool {
     }
 }
 
-function Invoke-ToolCapture {
-    param(
-        [Parameter(Mandatory = $true)]
-        [string]$FilePath,
-
-        [string[]]$ArgumentList = @(),
-
-        [string]$WorkingDirectory,
-
-        [string]$FailureMessage = "Command failed: $FilePath"
-    )
-
-    $previousLocation = $null
-    if ($WorkingDirectory) {
-        $previousLocation = Get-Location
-        Set-Location -LiteralPath $WorkingDirectory
-    }
-
-    try {
-        $psi = [System.Diagnostics.ProcessStartInfo]::new()
-        $psi.FileName = $FilePath
-        $psi.Arguments = ConvertTo-ProcessArgumentString -ArgumentList $ArgumentList
-        $psi.UseShellExecute = $false
-        $psi.RedirectStandardOutput = $true
-        $psi.RedirectStandardError = $true
-
-        $process = [System.Diagnostics.Process]::new()
-        $process.StartInfo = $psi
-        [void]$process.Start()
-
-        $standardOutput = $process.StandardOutput.ReadToEnd()
-        $standardError = $process.StandardError.ReadToEnd()
-        $process.WaitForExit()
-
-        $combinedOutput = @($standardOutput, $standardError) -join ''
-        if ($process.ExitCode -ne 0) {
-            $details = $combinedOutput.Trim()
-            if ($details) {
-                throw "$FailureMessage`n$details"
-            }
-
-            throw $FailureMessage
-        }
-
-        return $combinedOutput.TrimEnd()
-    }
-    finally {
-        if ($previousLocation) {
-            Set-Location -LiteralPath $previousLocation
-        }
-    }
-}
-
 $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $infraRoot = Split-Path -Parent $scriptDir
-$terraformDir = Join-Path $infraRoot 'terraform'
 $generatedDir = Join-Path $infraRoot 'docker/generated'
 $dockerDir = Join-Path $infraRoot 'docker'
 
-$vmIp = ""
-$vmUser = "azureuser"
-$sshKey = '~/.ssh/id_rsa_iac_workshop'
+if (-not $vmIp) {
+    throw 'VM の IP アドレスが未設定です。スクリプト冒頭の $vmIp を設定してください。'
+}
 
-write-Host "Using SSH key: $sshKey"
+Write-Host "Using SSH key: $sshKey"
 
 $composePath = Join-Path $generatedDir 'docker-compose.yml'
 if (-not (Test-Path -LiteralPath $composePath)) {

@@ -6,3 +6,5 @@ app.zip
 *.tfplan
 tfplan
 .env
+# Injected at code-server startup from the VM managed identity / backend config.
+backend.hcl

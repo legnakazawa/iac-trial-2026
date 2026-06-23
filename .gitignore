@@ -3,3 +3,4 @@
 **/*.tfvars
 **/*.tfstate
 **/*.tfstate.*
+第三回/infra/scripts/__pycache__

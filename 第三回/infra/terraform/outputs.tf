@@ -96,3 +96,8 @@ output "arm_subscription_id" {
   description = "Azure subscription ID."
   value       = data.azurerm_client_config.current.subscription_id
 }
+
+output "vm_identity_client_id" {
+  description = "Client ID of the VM user-assigned managed identity used by Terraform (ARM_CLIENT_ID)."
+  value       = azurerm_user_assigned_identity.vm.client_id
+}

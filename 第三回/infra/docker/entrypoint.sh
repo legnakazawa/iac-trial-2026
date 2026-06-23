@@ -30,18 +30,35 @@ ${REPO_URL}
 EOF
 fi
 
-cat > "${WORKSHOP_DIR}/WORKSHOP-GIT-FLOW.txt" <<'EOF'
-Third workshop Git flow:
+# Inject the Terraform remote-state backend connection info at workspace init.
+# Auth is the VM managed identity (MSI) via IMDS, so no secret is written here.
+if [ -n "${TF_STATE_STORAGE_ACCOUNT_NAME:-}" ]; then
+  cat > "${WORKSHOP_DIR}/backend.hcl" <<EOF
+resource_group_name  = "${TF_STATE_RESOURCE_GROUP_NAME}"
+storage_account_name = "${TF_STATE_STORAGE_ACCOUNT_NAME}"
+container_name       = "${TF_STATE_CONTAINER_NAME}"
+key                  = "${TF_STATE_KEY:-terraform.tfstate}"
+use_azuread_auth     = true
+use_msi              = true
+client_id            = "${ARM_CLIENT_ID}"
+EOF
+fi
 
-1. git checkout -b feature/workshop-change
-2. Edit main.tf and variables.tf
-3. git add . && git commit -m "Update workshop setting"
-4. git push -u origin feature/workshop-change
-5. git checkout main
-6. git merge feature/workshop-change
-7. git push origin main
+cat > "${WORKSHOP_DIR}/WORKSHOP-TERRAFORM-FLOW.txt" <<'EOF'
+Third workshop Terraform flow (run everything in this code-server terminal):
 
-The Azure Pipeline runs only when main is pushed.
+Auth: the VM managed identity is used automatically (ARM_USE_MSI=true).
+Backend settings are injected into backend.hcl at startup.
+
+1. terraform init -backend-config=backend.hcl
+2. terraform plan      # TF_VAR_owner / TF_VAR_resource_group_name are pre-set
+3. terraform apply
+
+Edit main.tf / variables.tf, then re-run plan & apply.
+Use git only to version your changes (no pipeline is required):
+  git checkout -b feature/workshop-change
+  git add . && git commit -m "Update workshop setting"
+  git push -u origin feature/workshop-change
 EOF
 
 exec /usr/bin/code-server \
