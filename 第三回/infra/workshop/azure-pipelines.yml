@@ -8,6 +8,11 @@ pr: none
 pool:
   vmImage: ubuntu-latest
 
+variables:
+  # 全タスク共通で非対話モードを強制（変数未設定時にハングせず即エラー）
+  TF_INPUT: "false"
+  TF_IN_AUTOMATION: "true"
+
 steps:
   - checkout: self
 
@@ -37,7 +42,7 @@ steps:
 
         echo "Terraform backend target: ${TF_STATE_STORAGE_ACCOUNT_NAME}/${TF_STATE_CONTAINER_NAME}/${TF_STATE_KEY}"
 
-        terraform init \
+        terraform init -input=false \
           -backend-config="resource_group_name=${TF_STATE_RESOURCE_GROUP_NAME}" \
           -backend-config="storage_account_name=${TF_STATE_STORAGE_ACCOUNT_NAME}" \
           -backend-config="container_name=${TF_STATE_CONTAINER_NAME}" \
@@ -64,6 +69,12 @@ steps:
 
   - task: AzureCLI@2
     displayName: Terraform plan
+    env:
+      # 【最重要】DevOpsの大文字変換を回避し、小文字の変数名でTerraformへ渡す。
+      # 右辺 $(...) のマクロ参照は大小無視で値を取得できるが、左辺(=実際の環境変数名)は
+      # Terraformが要求する変数名と完全一致(小文字)でなければならない。
+      TF_VAR_resource_group_name: $(TF_VAR_resource_group_name)
+      TF_VAR_owner: $(TF_VAR_owner)
     inputs:
       azureSubscription: "$(AZURE_SERVICE_CONNECTION)"
       scriptType: bash
@@ -78,10 +89,17 @@ steps:
         export ARM_SUBSCRIPTION_ID="$(az account show --query id -o tsv)"
         export ARM_USE_AZUREAD=true
 
-        terraform plan -lock-timeout=1m -out=tfplan
+        # ロック取得前に必須変数の欠落を検出して即停止
+        : "${TF_VAR_resource_group_name:?TF_VAR_resource_group_name is not set.}"
+        : "${TF_VAR_owner:?TF_VAR_owner is not set.}"
+
+        terraform plan -input=false -lock-timeout=5m -out=tfplan
 
   - task: AzureCLI@2
     displayName: Terraform apply
+    env:
+      TF_VAR_resource_group_name: $(TF_VAR_resource_group_name)
+      TF_VAR_owner: $(TF_VAR_owner)
     inputs:
       azureSubscription: "$(AZURE_SERVICE_CONNECTION)"
       scriptType: bash
@@ -96,4 +114,7 @@ steps:
         export ARM_SUBSCRIPTION_ID="$(az account show --query id -o tsv)"
         export ARM_USE_AZUREAD=true
 
-        terraform apply -lock-timeout=1m -auto-approve tfplan
+        : "${TF_VAR_resource_group_name:?TF_VAR_resource_group_name is not set.}"
+        : "${TF_VAR_owner:?TF_VAR_owner is not set.}"
+
+        terraform apply -input=false -lock-timeout=5m -auto-approve tfplan
