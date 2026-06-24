@@ -134,6 +134,13 @@ resource "azurerm_linux_virtual_machine" "workshop" {
     public_key = var.admin_ssh_public_key
   }
 
+  # Code-server containers running on this VM authenticate Terraform via this
+  # managed identity (IMDS at 169.254.169.254 is reachable from the containers).
+  identity {
+    type         = "UserAssigned"
+    identity_ids = [azurerm_user_assigned_identity.vm.id]
+  }
+
   os_disk {
     name                 = "osdisk-workshop-${local.prefix}"
     caching              = "ReadWrite"

@@ -11,7 +11,8 @@ resource "azurerm_storage_account" "tfstate" {
 }
 
 resource "azurerm_storage_container" "tfstate" {
-  name                  = "tfstate"
+  for_each              = toset(local.participant_names)
+  name                  = "tfstate-${each.key}"
   storage_account_id    = azurerm_storage_account.tfstate.id
   container_access_type = "private"
 }

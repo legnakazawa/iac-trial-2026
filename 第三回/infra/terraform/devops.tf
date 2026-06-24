@@ -2,22 +2,13 @@ locals {
   azuredevops_service_connection_name = "sc-${local.prefix}"
 }
 
-resource "azuredevops_project" "workshop" {
+data "azuredevops_project" "workshop" {
   name               = local.azuredevops_project_name
-  visibility         = "private"
-  version_control    = "Git"
-  work_item_template = "Agile"
-  description        = "IaC workshop session 3: Azure Repos + Azure Pipelines + Terraform."
-
-  features = {
-    repositories = "enabled"
-    pipelines    = "enabled"
-  }
 }
 
 resource "azuredevops_git_repository" "workshop" {
   for_each   = toset(local.participant_names)
-  project_id = azuredevops_project.workshop.id
+  project_id = data.azuredevops_project.workshop.id
   name       = "${var.azuredevops_repo_prefix}-${each.key}"
 
   initialization {
@@ -26,7 +17,7 @@ resource "azuredevops_git_repository" "workshop" {
 }
 
 resource "azuredevops_serviceendpoint_azurerm" "workshop" {
-  project_id            = azuredevops_project.workshop.id
+  project_id            = data.azuredevops_project.workshop.id
   service_endpoint_name = local.azuredevops_service_connection_name
   description           = "Service connection used by workshop Terraform pipelines."
 
@@ -47,7 +38,7 @@ resource "azuredevops_serviceendpoint_azurerm" "workshop" {
 
 resource "azuredevops_variable_group" "workshop" {
   for_each     = toset(local.participant_names)
-  project_id   = azuredevops_project.workshop.id
+  project_id   = data.azuredevops_project.workshop.id
   name         = "${var.azuredevops_repo_prefix}-${each.key}"
   description  = "Terraform variables for ${each.key} workshop pipeline."
   allow_access = true
@@ -79,12 +70,12 @@ resource "azuredevops_variable_group" "workshop" {
 
   variable {
     name  = "TF_STATE_CONTAINER_NAME"
-    value = azurerm_storage_container.tfstate.name
+    value = azurerm_storage_container.tfstate[each.key].name
   }
 
   variable {
     name  = "TF_STATE_KEY"
-    value = "${each.key}/terraform.tfstate"
+    value = "terraform.tfstate"
   }
 
   variable {
@@ -95,7 +86,7 @@ resource "azuredevops_variable_group" "workshop" {
 
 resource "azuredevops_build_definition" "workshop" {
   for_each   = azuredevops_git_repository.workshop
-  project_id = azuredevops_project.workshop.id
+  project_id = data.azuredevops_project.workshop.id
   name       = "pipeline-${each.key}"
   path       = "\\"
 
@@ -137,12 +128,12 @@ resource "azuredevops_build_definition" "workshop" {
 
   variable {
     name  = "TF_STATE_CONTAINER_NAME"
-    value = azurerm_storage_container.tfstate.name
+    value = azurerm_storage_container.tfstate[each.key].name
   }
 
   variable {
     name  = "TF_STATE_KEY"
-    value = "${each.key}/terraform.tfstate"
+    value = "terraform.tfstate"
   }
 
   variable {
@@ -153,7 +144,7 @@ resource "azuredevops_build_definition" "workshop" {
 
 resource "azuredevops_resource_authorization" "service_connection" {
   for_each      = azuredevops_build_definition.workshop
-  project_id    = azuredevops_project.workshop.id
+  project_id    = data.azuredevops_project.workshop.id
   resource_id   = azuredevops_serviceendpoint_azurerm.workshop.id
   definition_id = each.value.id
   authorized    = true

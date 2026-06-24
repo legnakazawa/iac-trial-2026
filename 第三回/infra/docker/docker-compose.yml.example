@@ -11,6 +11,20 @@ services:
       GIT_PAT: "change-me"
       GIT_USER_NAME: "user01"
       GIT_USER_EMAIL: "user01@example.local"
+      # Terraform authenticates through the VM user-assigned managed identity
+      # (IMDS / MSI); ARM_CLIENT_ID selects that identity.
+      ARM_USE_MSI: "true"
+      ARM_USE_AZUREAD: "true"
+      ARM_SUBSCRIPTION_ID: "00000000-0000-0000-0000-000000000000"
+      ARM_TENANT_ID: "00000000-0000-0000-0000-000000000000"
+      ARM_CLIENT_ID: "00000000-0000-0000-0000-000000000000"
+      # Backend (remote state) connection info, injected at workspace init.
+      TF_STATE_RESOURCE_GROUP_NAME: "rg-platform-example"
+      TF_STATE_STORAGE_ACCOUNT_NAME: "sttfexample"
+      TF_STATE_CONTAINER_NAME: "tfstate-user01"
+      TF_STATE_KEY: "terraform.tfstate"
+      TF_VAR_resource_group_name: "rg-workshop-example"
+      TF_VAR_owner: "user01"
     volumes:
       - ../workspaces/user01:/home/coder/workshop:rw
     restart: unless-stopped

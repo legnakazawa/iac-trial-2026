@@ -18,6 +18,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
   && rm -rf /var/lib/apt/lists/*
 
 COPY entrypoint.sh /usr/local/bin/workshop-entrypoint.sh
+RUN sed -i 's/\r$//' /usr/local/bin/workshop-entrypoint.sh
 RUN chmod +x /usr/local/bin/workshop-entrypoint.sh
 
 USER coder

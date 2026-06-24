@@ -21,7 +21,7 @@ fi
 echo "Deploying to ${VM_USER}@${VM_IP} ..."
 
 ssh -i "${SSH_KEY}" -o StrictHostKeyChecking=accept-new "${VM_USER}@${VM_IP}" \
-  "mkdir -p /opt/workshop/docker /opt/workshop/workspaces"
+  "mkdir -p /opt/workshop/docker /opt/workshop/workspaces && sudo chown -R ${VM_USER}:${VM_USER} /opt/workshop"
 
 scp -i "${SSH_KEY}" \
   "${DOCKER_DIR}/Dockerfile" \
@@ -30,6 +30,14 @@ scp -i "${SSH_KEY}" \
   "${GENERATED_DIR}/docker-compose.yml" \
   "${GENERATED_DIR}/.env" \
   "${VM_USER}@${VM_IP}:/opt/workshop/docker/"
+
+if compgen -G "${DOCKER_DIR}/workspaces/*" > /dev/null; then
+  scp -i "${SSH_KEY}" -r "${DOCKER_DIR}/workspaces/"* \
+    "${VM_USER}@${VM_IP}:/opt/workshop/workspaces/"
+fi
+
+ssh -i "${SSH_KEY}" "${VM_USER}@${VM_IP}" \
+  "sudo chown -R ${VM_USER}:${VM_USER} /opt/workshop/workspaces"
 
 ssh -i "${SSH_KEY}" "${VM_USER}@${VM_IP}" bash -s <<'REMOTE'
 set -euo pipefail

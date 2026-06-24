@@ -6,11 +6,14 @@ from __future__ import annotations
 import argparse
 import csv
 import json
+import re
 import secrets
 import string
 import subprocess
 import sys
+from dataclasses import dataclass, field
 from pathlib import Path
+from urllib.parse import urlsplit, urlunsplit
 
 INFRA_ROOT = Path(__file__).resolve().parent.parent
 DOCKER_DIR = INFRA_ROOT / "docker"
@@ -18,11 +21,47 @@ GENERATED_DIR = DOCKER_DIR / "generated"
 WORKSPACES_DIR = DOCKER_DIR / "workspaces"
 CREDENTIALS_DIR = INFRA_ROOT / "credentials"
 TERRAFORM_DIR = INFRA_ROOT / "terraform"
+TFVARS_PATH = TERRAFORM_DIR / "terraform.tfvars"
+
+
+@dataclass
+class BackendConfig:
+    """Remote-state backend + MSI auth context injected into each code-server."""
+
+    subscription_id: str
+    tenant_id: str
+    client_id: str
+    resource_group_name: str
+    storage_account_name: str
+    workshop_resource_group_name: str
+    container_names: dict[str, str] = field(default_factory=dict)
+
+    @classmethod
+    def from_outputs(cls, outputs: dict) -> "BackendConfig":
+        return cls(
+            subscription_id=outputs["arm_subscription_id"]["value"],
+            tenant_id=outputs["arm_tenant_id"]["value"],
+            client_id=outputs["vm_identity_client_id"]["value"],
+            resource_group_name=outputs["tfstate_resource_group_name"]["value"],
+            storage_account_name=outputs["tfstate_storage_account_name"]["value"],
+            workshop_resource_group_name=outputs["workshop_resource_group_name"]["value"],
+            container_names=outputs["tfstate_container_names"]["value"],
+        )
+
 
 
 def random_password(length: int = 16) -> str:
     alphabet = string.ascii_letters + string.digits
     return "".join(secrets.choice(alphabet) for _ in range(length))
+
+
+def sanitize_repo_url(url: str) -> str:
+    parsed = urlsplit(url)
+    hostname = parsed.hostname or ""
+    netloc = hostname
+    if parsed.port:
+        netloc = f"{hostname}:{parsed.port}"
+    return urlunsplit((parsed.scheme, netloc, parsed.path, parsed.query, parsed.fragment))
 
 
 def terraform_output_json(name: str | None = None) -> dict:
@@ -48,20 +87,28 @@ def terraform_output_json(name: str | None = None) -> dict:
     return json.loads(result.stdout)
 
 
-def terraform_output_raw(name: str) -> str:
-    result = subprocess.run(
-        ["terraform", "output", "-raw", name],
-        cwd=str(TERRAFORM_DIR),
-        capture_output=True,
-        text=True,
-        check=False,
-    )
-    if result.returncode != 0:
-        print(f"Error: terraform output -raw {name} failed.", file=sys.stderr)
-        print(result.stderr, file=sys.stderr)
+def tfvars_value(name: str, tfvars_path: Path = TFVARS_PATH) -> str:
+    """Read a simple `name = "value"` assignment directly from terraform.tfvars.
+
+    This deliberately bypasses `terraform output`, whose values are frozen in
+    the Terraform state and can lag behind edits to terraform.tfvars until the
+    next `terraform apply`.
+    """
+    if not tfvars_path.exists():
+        print(f"Error: {tfvars_path} not found.", file=sys.stderr)
         sys.exit(1)
 
-    return result.stdout.strip()
+    pattern = re.compile(
+        rf'^\s*{re.escape(name)}\s*=\s*"((?:[^"\\]|\\.)*)"\s*(?:#.*)?$'
+    )
+    for raw_line in tfvars_path.read_text(encoding="utf-8").splitlines():
+        match = pattern.match(raw_line)
+        if match:
+            value = match.group(1).replace('\\"', '"').replace("\\\\", "\\")
+            return value.strip()
+
+    print(f"Error: {name} not found in {tfvars_path}.", file=sys.stderr)
+    sys.exit(1)
 
 
 def write_env(path: Path, passwords: dict[str, str], git_pat: str) -> None:
@@ -70,7 +117,7 @@ def write_env(path: Path, passwords: dict[str, str], git_pat: str) -> None:
         prefix = owner.upper()
         lines.append(f"{prefix}_PASSWORD={password}")
         lines.append(f"{prefix}_GIT_PAT={git_pat}")
-    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8", newline="\n")
 
 
 def write_compose(
@@ -79,11 +126,13 @@ def write_compose(
     passwords: dict[str, str],
     vm_ip: str,
     base_port: int,
+    backend: "BackendConfig",
 ) -> None:
     services: list[str] = []
     for index, owner in enumerate(sorted(repos), start=0):
         port = base_port + index
-        repo_url = repos[owner]["remote_url"]
+        repo_url = sanitize_repo_url(repos[owner]["remote_url"])
+        state_container = backend.container_names.get(owner, f"tfstate-{owner}")
         services.append(
             f"""  {owner}:
     build: .
@@ -97,6 +146,21 @@ def write_compose(
       GIT_PAT: "${{{owner.upper()}_GIT_PAT}}"
       GIT_USER_NAME: "{owner}"
       GIT_USER_EMAIL: "{owner}@example.local"
+      # Terraform authenticates through the VM user-assigned managed identity
+      # (IMDS / MSI); ARM_CLIENT_ID selects that identity.
+      ARM_USE_MSI: "true"
+      ARM_USE_AZUREAD: "true"
+      ARM_SUBSCRIPTION_ID: "{backend.subscription_id}"
+      ARM_TENANT_ID: "{backend.tenant_id}"
+      ARM_CLIENT_ID: "{backend.client_id}"
+      # Backend (remote state) connection info, injected at workspace init.
+      TF_STATE_RESOURCE_GROUP_NAME: "{backend.resource_group_name}"
+      TF_STATE_STORAGE_ACCOUNT_NAME: "{backend.storage_account_name}"
+      TF_STATE_CONTAINER_NAME: "{state_container}"
+      TF_STATE_KEY: "terraform.tfstate"
+      # Convenience inputs for `terraform plan/apply`.
+      TF_VAR_resource_group_name: "{backend.workshop_resource_group_name}"
+      TF_VAR_owner: "{owner}"
     volumes:
       - ../workspaces/{owner}:/home/coder/workshop:rw
     restart: unless-stopped"""
@@ -104,12 +168,12 @@ def write_compose(
 
     content = (
         "# Auto-generated by scripts/gen-compose.py\n"
-        f"# VM: http://{vm_ip}:{base_port}\n"
+        f"# VM: {{http://{vm_ip}}}:{base_port}\n"
         "services:\n"
         + "\n".join(services)
         + "\n"
     )
-    path.write_text(content, encoding="utf-8")
+    path.write_text(content, encoding="utf-8", newline="\n")
 
 
 def write_participants_csv(
@@ -126,13 +190,14 @@ def write_participants_csv(
         )
         writer.writeheader()
         for index, owner in enumerate(sorted(repos), start=0):
+            repo_url = sanitize_repo_url(repos[owner]["remote_url"])
             writer.writerow(
                 {
                     "seat": str(index + 1),
                     "owner": owner,
-                    "url": f"http://{vm_ip}:{base_port + index}",
+                    "url": f"{{http://{vm_ip}}}:{base_port + index}",
                     "password": passwords[owner],
-                    "repo_url": repos[owner]["remote_url"],
+                    "repo_url": repo_url,
                 }
             )
 
@@ -157,7 +222,10 @@ def main() -> None:
     repos = outputs["participant_repositories"]["value"]
     vm_ip = outputs["vm_public_ip"]["value"]
     base_port = args.base_port or int(outputs["base_port"]["value"])
-    git_pat = terraform_output_raw("azuredevops_git_pat")
+    backend = BackendConfig.from_outputs(outputs)
+    # PAT is read straight from terraform.tfvars (not `terraform output`), so
+    # edits take effect immediately without needing `terraform apply` first.
+    git_pat = tfvars_value("azuredevops_git_pat")
 
     passwords = {owner: random_password() for owner in repos}
 
@@ -170,7 +238,7 @@ def main() -> None:
     csv_path = CREDENTIALS_DIR / "participants.csv"
 
     write_env(env_path, passwords, git_pat)
-    write_compose(compose_path, repos, passwords, vm_ip, base_port)
+    write_compose(compose_path, repos, passwords, vm_ip, base_port, backend)
     write_participants_csv(csv_path, repos, passwords, vm_ip, base_port)
 
     print(f"Generated: {compose_path}")
